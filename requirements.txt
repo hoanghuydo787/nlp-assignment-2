@@ -2,3 +2,12 @@ langchain
 sentence-transformers
 faiss-cpu
 rank_bm25
+accelerate
+bitsandbytes
+chardet
+matplotlib
+transformers
+gpt4all
+beautifulsoup4
+langchainhub
+llama-cpp-python
