@@ -1,24 +1,22 @@
-import collections
 import json
 import os
-import time
-from getpass import getpass
 
 import matplotlib.pyplot as plt
-from langchain import HuggingFaceHub
 from langchain.chains import RetrievalQA
 from langchain.chains.question_answering import load_qa_chain
 from langchain.document_loaders import TextLoader
 from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.llms import HuggingFaceHub
 from langchain.retrievers import (BM25Retriever, EnsembleRetriever,
                                   ParentDocumentRetriever)
 from langchain.schema import Document
 from langchain.storage import InMemoryStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS, Chroma
+from langchain.vectorstores import FAISS
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap = 200)
-DOCUMENT_DIR = "../data/subsections/subsections"
+# DOCUMENT_DIR = "../data/subsections/subsections"
+DOCUMENT_DIR = "../data/translated_subsections/translated_subsections"
 
 docs = []
 for filename in sorted(os.listdir(DOCUMENT_DIR)):
@@ -43,8 +41,10 @@ for filename in sorted(os.listdir(DOCUMENT_DIR)):
                 }
             ))
 
-model_name = "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base"
-model_kwargs={'device': 'cuda'}
+# model_name = "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base"
+# model_name = "C:\\Users\\hoang\\.cache\\torch\\sentence_transformers\\VoVanPhuc_sup-SimCSE-VietNamese-phobert-base"
+model_name = "BAAI/bge-large-en-v1.5"
+model_kwargs={'device': 'cpu'}
 encode_kwargs = {'normalize_embeddings': True} # set True to compute cosine similarity
 
 vib_embeddings = HuggingFaceEmbeddings(
@@ -117,7 +117,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           BitsAndBytesConfig, pipeline)
 
 # 1st VERSION with quantization
-model_path = "vilm/vietcuna-3b"
+# model_path = "vilm/vietcuna-3b"
 # model_path = "vilm/vietcuna-7b-v3"
 # model_path = "vlsp-2023-vllm/hoa-7b"
 # model_path = "infCapital/llama2-7b-chatvi"

@@ -11,3 +11,5 @@ gpt4all
 beautifulsoup4
 langchainhub
 llama-cpp-python
+pyvi
+huggingface-hub
