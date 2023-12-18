@@ -42,7 +42,6 @@ for filename in sorted(os.listdir(DOCUMENT_DIR)):
             ))
 
 # model_name = "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base"
-# model_name = "C:\\Users\\hoang\\.cache\\torch\\sentence_transformers\\VoVanPhuc_sup-SimCSE-VietNamese-phobert-base"
 model_name = "BAAI/bge-large-en-v1.5"
 model_kwargs={'device': 'cpu'}
 encode_kwargs = {'normalize_embeddings': True} # set True to compute cosine similarity
@@ -117,7 +116,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           BitsAndBytesConfig, pipeline)
 
 # 1st VERSION with quantization
-# model_path = "vilm/vietcuna-3b"
+model_path = "vilm/vietcuna-3b"
 # model_path = "vilm/vietcuna-7b-v3"
 # model_path = "vlsp-2023-vllm/hoa-7b"
 # model_path = "infCapital/llama2-7b-chatvi"

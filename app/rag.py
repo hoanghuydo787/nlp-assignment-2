@@ -1,15 +1,18 @@
 import json
-from operator import itemgetter
 import os
+from operator import itemgetter
+import timeit
 
-from langchain.llms import HuggingFaceHub
+import faiss
+import numpy as np
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chains import LLMChain, RetrievalQA
 from langchain.chains.question_answering import load_qa_chain
 from langchain.document_loaders import TextLoader
 from langchain.embeddings import GPT4AllEmbeddings, HuggingFaceEmbeddings
-from langchain.llms import LlamaCpp
+from langchain.llms import HuggingFaceHub, LlamaCpp, GPT4All
+from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
 from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.prompts.prompt import PromptTemplate
 from langchain.retrievers import (BM25Retriever, EnsembleRetriever,
@@ -23,9 +26,15 @@ from langchain_core.messages import AIMessage, HumanMessage, get_buffer_string
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import (RunnableLambda, RunnableParallel,
                                       RunnablePassthrough)
+from langchain.llms.huggingface_pipeline import HuggingFacePipeline
 
-text_splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap = 200)
+
+
+# prepare embedding
+# text_splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap = 200)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size = 500, chunk_overlap = 100)
 DOCUMENT_DIR = "../data/subsections/subsections"
+# DOCUMENT_DIR = "../data/translated_subsections/translated_subsections"
 
 docs = []
 for filename in sorted(os.listdir(DOCUMENT_DIR)):
@@ -50,7 +59,11 @@ for filename in sorted(os.listdir(DOCUMENT_DIR)):
                 }
             ))
 
-model_name = "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base"
+# model_name = "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base"
+# model_name = "duyanhpam/simcse-model-phobert-base"
+model_name = "bkai-foundation-models/vietnamese-bi-encoder"
+# model_name = "BAAI/bge-large-en-v1.5"
+
 model_kwargs={'device': 'cpu'}
 encode_kwargs = {'normalize_embeddings': True} # set True to compute cosine similarity
 
@@ -60,192 +73,139 @@ vib_embeddings = HuggingFaceEmbeddings(
     encode_kwargs=encode_kwargs
 )
 
-embeddings = vib_embeddings.embed_documents([doc.page_content for doc in docs])
+# vectorstore = FAISS.from_documents(
+#     documents=docs,
+#     embedding=vib_embeddings
+# )
+# vector_retriever = vectorstore.as_retriever(search_kwargs=dict(k=2))
+# vectorstore.save_local('../en_index/1000_chunks')
 
-import faiss
-import numpy as np
-
-embeddings = np.array(embeddings, dtype=np.float32)
-index = faiss.IndexFlatL2(embeddings.shape[1])
-index.add(embeddings)
-
-print(index)
-faiss.write_index(index, '../embeddings.index')
-
-vectorstore = FAISS.from_documents(
-    documents=docs,
-    embedding=vib_embeddings
+vectorstore = FAISS.load_local(
+    # '../en_index/1000_chunks',
+    '../vi_index/500_chunks',
+    vib_embeddings
 )
-vector_retriever = vectorstore.as_retriever(search_kwargs=dict(k=2))
-vectorstore.save_local('../')
+vector_retriever = vectorstore.as_retriever(search_kwargs=dict(k=1))
 
 bm25_retriever = BM25Retriever.from_documents(docs)
-bm25_retriever.k = 2
+bm25_retriever.k = 1
 
 retriever = EnsembleRetriever(retrievers=[bm25_retriever, vector_retriever],
                              weights=[0.5, 0.5]) 
-
-
 
 snippet = """U não là tình trạng các khối u hình thành trong sọ não, đe dọa tính mạng người bệnh. U não thường có 2 loại là lành tính và ác tính. Đâu là điểm chung của chúng?
 A. Đều là các bệnh nguy hiểm
 B. Đều là ung thư
 C. Nguyên nhân chính xác không thể xác định
 D. Xảy ra nhiều nhất ở người già"""
-
-kags = bm25_retriever.get_relevant_documents(snippet)
-
-vectorstore = FAISS.from_texts(
-    ["harrison worked at kensho"], embedding=GPT4AllEmbeddings()
-)
-retriever = vectorstore.as_retriever()
+# snippet = """Brain tumors are masses formed within the skull, posing a threat to the patient's life. Generally, there are two types of brain tumors: benign and malignant. What is a common characteristic between them?
+# A. Both are dangerous illnesses.
+# B. Both are cancers.
+# C. The exact primary cause cannot be determined.
+# D. Occur most frequently in older people."""
+# kags = bm25_retriever.get_relevant_documents(snippet)
+# kags = vector_retriever.get_relevant_documents(snippet)
+kags = retriever.get_relevant_documents(snippet)
+print(kags)
 
 n_gpu_layers = 1
 n_batch = 512
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
-llm = LlamaCpp(
-    model_path="C:\\Users\\hoang\\VisualStudioCodeProjects\\PythonProjects\\nlp-assignment-2\\models\\llama-2-7b-chat.Q6_K.gguf",
-    n_gpu_layers=n_gpu_layers,
-    n_batch=n_batch,
-    n_ctx=2048,
-    f16_kv=True,  # MUST set to True, otherwise you will run into problem after a couple of calls
-    callback_manager=callback_manager,
-    verbose=True,
+# llm = LlamaCpp(
+#     model_path="C:\\Users\\hoang\\VisualStudioCodeProjects\\PythonProjects\\nlp-assignment-2\\models\\llama-2-7b-chat.Q6_K.gguf",
+#     n_gpu_layers=n_gpu_layers,
+#     n_batch=n_batch,
+#     n_ctx=2048,
+#     f16_kv=True,  # MUST set to True, otherwise you will run into problem after a couple of calls
+#     callback_manager=callback_manager,
+#     verbose=False,
+# )
+
+# llm = GPT4All(
+#     model=r"C:\Users\hoang\VisualStudioCodeProjects\PythonProjects\nlp-assignment-2\models\mistral-7b-openorca.Q4_0.gguf",
+#     max_tokens=2048,
+# )
+
+# model = llm
+
+model = HuggingFacePipeline.from_model_id(
+    model_id="vilm/vietcuna-3b",
+    task="text-generation",
+    pipeline_kwargs={"max_new_tokens": 2048},
 )
 
-model = llm
+# _template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
 
+# Chat History:
+# {chat_history}
+# Follow Up Input: {question}
+# Standalone question:"""
+# CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_template)
 
+template = """Answer the question based only on the following context and chat history:
+Chat history: {chat_history}
 
-
-_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
-
-Chat History:
-{chat_history}
-Follow Up Input: {question}
-Standalone question:"""
-CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_template)
-
-
-template = """Answer the question based only on the following context:
-{context}
+Context: {context}
 
 Question: {question}
 """
 ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
 
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
-
 def _combine_documents(
     docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
 ):
     doc_strings = [format_document(doc, document_prompt) for doc in docs]
     return document_separator.join(doc_strings)
 
-_inputs = RunnableParallel(
-    standalone_question=RunnablePassthrough.assign(
-        chat_history=lambda x: get_buffer_string(x["chat_history"])
-    )
-    | CONDENSE_QUESTION_PROMPT
-    | model
-    | StrOutputParser(),
-)
-_context = {
-    "context": itemgetter("standalone_question") | retriever | _combine_documents,
-    "question": lambda x: x["standalone_question"],
-}
-conversational_qa_chain = _inputs | _context | ANSWER_PROMPT | model
-
-conversational_qa_chain.invoke(
-    {
-        "question": "where did harrison work?",
-        "chat_history": [],
-    }
-)
-# AIMessage(content='Harrison was employed at Kensho.')
-
-
-
-conversational_qa_chain.invoke(
-    {
-        "question": "where did he work?",
-        "chat_history": [
-            HumanMessage(content="Who wrote this notebook?"),
-            AIMessage(content="Harrison"),
-        ],
-    }
-)
-# AIMessage(content='Harrison worked at Kensho.')
-
-
-
-
-from operator import itemgetter
-
-from langchain.memory import ConversationBufferMemory
-
-memory = ConversationBufferMemory(
+# memory = ConversationBufferMemory(
+#     return_messages=True, output_key="answer", input_key="question"
+# )
+memory = ConversationSummaryMemory(
     return_messages=True, output_key="answer", input_key="question"
 )
-# First we add a step to load memory
-# This adds a "memory" key to the input object
 loaded_memory = RunnablePassthrough.assign(
     chat_history=RunnableLambda(memory.load_memory_variables) | itemgetter("history"),
 )
-# Now we calculate the standalone question
-standalone_question = {
-    "standalone_question": {
-        "question": lambda x: x["question"],
-        "chat_history": lambda x: get_buffer_string(x["chat_history"]),
-    }
-    | CONDENSE_QUESTION_PROMPT
-    | model
-    | StrOutputParser(),
-}
-# Now we retrieve the documents
+# standalone_question = {
+#     "standalone_question": {
+#         "question": lambda x: x["question"],
+#         "chat_history": lambda x: get_buffer_string(x["chat_history"]),
+#     }
+#     | CONDENSE_QUESTION_PROMPT
+#     | model,
+#     | StrOutputParser(),
+# }
 retrieved_documents = {
     "docs": itemgetter("standalone_question") | retriever,
     "question": lambda x: x["standalone_question"],
 }
-# Now we construct the inputs for the final prompt
 final_inputs = {
     "context": lambda x: _combine_documents(x["docs"]),
     "question": itemgetter("question"),
 }
-# And finally, we do the part that returns the answers
 answer = {
     "answer": final_inputs | ANSWER_PROMPT | model,
     "docs": itemgetter("docs"),
 }
-# And now we put it all together!
 final_chain = loaded_memory | standalone_question | retrieved_documents | answer
 
 
-inputs = {"question": "where did harrison work?"}
+inputs = {"question": "u não là bệnh gì?"}
 result = final_chain.invoke(inputs)
-print(result)
+print(result['answer'])
 
-# {'answer': AIMessage(content='Harrison was employed at Kensho.'),
-#  'docs': [Document(page_content='harrison worked at kensho')]}
-
-# Note that the memory does not save automatically
-# This will be improved in the future
-# For now you need to save it yourself
 memory.save_context(inputs, {"answer": result["answer"]})
-
 memory.load_memory_variables({})
 
-# {'history': [HumanMessage(content='where did harrison work?'),
-#   AIMessage(content='Harrison was employed at Kensho.')]}
-
-inputs = {"question": "but where did he really work?"}
+inputs = {"question": "bệnh u não có chữa được không?"}
 result = final_chain.invoke(inputs)
-print(result)
+print(result['answer'])
 
-# {'answer': AIMessage(content='Harrison actually worked at Kensho.'),
-#  'docs': [Document(page_content='harrison worked at kensho')]}
+memory.save_context(inputs, {"answer": result["answer"]})
+memory.load_memory_variables({})
 
-
-
-
+inputs = {"question": "các mức độ của bệnh u não?"}
+result = final_chain.invoke(inputs)
+print(result['answer'])
