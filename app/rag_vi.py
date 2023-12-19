@@ -105,8 +105,8 @@ D. Xảy ra nhiều nhất ở người già"""
 # D. Occur most frequently in older people."""
 # kags = bm25_retriever.get_relevant_documents(snippet)
 # kags = vector_retriever.get_relevant_documents(snippet)
-kags = retriever.get_relevant_documents(snippet)
-print(kags)
+# kags = retriever.get_relevant_documents(snippet)
+# print(kags)
 
 n_gpu_layers = 1
 n_batch = 512
@@ -131,6 +131,11 @@ callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
 model = HuggingFacePipeline.from_model_id(
     model_id="vilm/vietcuna-3b",
+    # model_id = "vilm/vietcuna-7b-v3",
+    # model_id = "vlsp-2023-vllm/hoa-7b",
+    # model_id = "infCapital/llama2-7b-chatvi",
+    # model_id = "NousResearch/Llama-2-7b-hf",
+    # model_id = "ura-hcmut/ura-llama-7b",
     task="text-generation",
     pipeline_kwargs={"max_new_tokens": 2048},
 )
@@ -143,12 +148,19 @@ model = HuggingFacePipeline.from_model_id(
 # Standalone question:"""
 # CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_template)
 
-template = """Answer the question based only on the following context and chat history:
-Chat history: {chat_history}
+# template = """Answer the question based only on the following context and chat history:
+# Chat history: {chat_history}
 
-Context: {context}
+# Context: {context}
 
-Question: {question}
+# Question: {question}
+# """
+template = """Trả lời câu hỏi dựa vào ngữ cảnh và lịch sử trò chuyện sau:
+Lịch sử trò chuyện: {chat_history}
+
+Ngữ cảnh: {context}
+
+Câu hỏi: {question}
 """
 ANSWER_PROMPT = ChatPromptTemplate.from_template(template)
 
@@ -163,7 +175,7 @@ def _combine_documents(
 #     return_messages=True, output_key="answer", input_key="question"
 # )
 memory = ConversationSummaryMemory(
-    return_messages=True, output_key="answer", input_key="question"
+    llm=model, return_messages=True, output_key="answer", input_key="question"
 )
 loaded_memory = RunnablePassthrough.assign(
     chat_history=RunnableLambda(memory.load_memory_variables) | itemgetter("history"),
@@ -174,25 +186,30 @@ loaded_memory = RunnablePassthrough.assign(
 #         "chat_history": lambda x: get_buffer_string(x["chat_history"]),
 #     }
 #     | CONDENSE_QUESTION_PROMPT
-#     | model,
+#     | model
 #     | StrOutputParser(),
 # }
 retrieved_documents = {
-    "docs": itemgetter("standalone_question") | retriever,
-    "question": lambda x: x["standalone_question"],
+    "docs": itemgetter("question") | retriever,
+    "question": lambda x: x["question"],
+    'chat_history': itemgetter('chat_history'),
 }
 final_inputs = {
     "context": lambda x: _combine_documents(x["docs"]),
     "question": itemgetter("question"),
+    'chat_history': itemgetter('chat_history'),
 }
 answer = {
     "answer": final_inputs | ANSWER_PROMPT | model,
     "docs": itemgetter("docs"),
 }
-final_chain = loaded_memory | standalone_question | retrieved_documents | answer
-
+# final_chain = loaded_memory | standalone_question | retrieved_documents | answer
+final_chain = loaded_memory | retrieved_documents | answer
+# final_chain = loaded_memory | answer
+# print(final_chain)
 
 inputs = {"question": "u não là bệnh gì?"}
+print(inputs)
 result = final_chain.invoke(inputs)
 print(result['answer'])
 
@@ -200,6 +217,7 @@ memory.save_context(inputs, {"answer": result["answer"]})
 memory.load_memory_variables({})
 
 inputs = {"question": "bệnh u não có chữa được không?"}
+print(inputs)
 result = final_chain.invoke(inputs)
 print(result['answer'])
 
@@ -207,5 +225,6 @@ memory.save_context(inputs, {"answer": result["answer"]})
 memory.load_memory_variables({})
 
 inputs = {"question": "các mức độ của bệnh u não?"}
+print(inputs)
 result = final_chain.invoke(inputs)
 print(result['answer'])
