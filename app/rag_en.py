@@ -114,7 +114,7 @@ n_batch = 512
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
 llm = LlamaCpp(
-    model_path="C:\\Users\\hoang\\VisualStudioCodeProjects\\PythonProjects\\nlp-assignment-2\\models\\llama-2-7b-chat.Q6_K.gguf",
+    model_path="../models/llama-2-7b-chat.Q6_K.gguf",
     n_gpu_layers=n_gpu_layers,
     n_batch=n_batch,
     n_ctx=2048,
